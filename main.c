@@ -54,45 +54,52 @@ void add(Node **h, Node **t, char *s, int n) {
 	(*t)->next = new;
 	*t = new;
 }
-Node *remove_(Node **h, Node **t, int n) { // must be freed after use
-	Node *popped;
-	if ((*h)->number == n) {
-		popped = *h;
-		*h = (*h)->next;
-		return popped;
-	}
-	Node *prev = *h;
-	popped = (*h)->next;
-	while (popped->number != n || popped != NULL) {
-		prev = prev->next;
-		popped = popped->next;
-	}
-	if (popped == NULL) {
-		return NULL;
-	}
-	prev
-	
-	
-		
-	// needs work, gets cmp field, use go_to
-	
-	return popped;
-}
-Node *go_to(int start, int loc, Node *h) {
-	Node *p = h;
-	for (int i = start; i != loc; i++) { // should i start at 0 or 1?
-		p = p->next;
-	} return p;
-}
-void print_list(Node *h) {
-	//for (Node *p = h; p != NULL; p = p->next) {
-		//printf("%d\t%s\n", p->number, p->string); // very accomadating...
-	//}
+void print_list(Node *h, bool s) {
 	for (; h != NULL; h = h->next) {
-		printf("%-5d%s\n",h->number,h->string);
+		if (s) {
+			char status[16] = "blank";
+			if (h->status) {
+				strcpy(status,"RUNNING");
+			} else {
+				strcpy(status,"PAUSED");
+			}
+			printf("%5d\t%s\t%s\n",h->number,h->string,status);
+		} else {
+			printf("%-5d%s\n",h->number,h->string);
+		}
 	}  
 }
-
+Node *remove_(Node **h, Node **t, Node *he, Node *ta, int n) { // must be freed after use
+	//print_list(*h);
+	if (he == NULL || ta == NULL) {
+		return NULL;
+	}
+	if (he->number == n) {
+		Node *pop = *h;
+		*h = (*h)->next;
+		return pop;
+	}
+	Node *prev = he;
+	Node *curr = he->next;
+	while (curr->number != n) {
+		prev = prev->next;
+		curr = curr->next;
+		if (curr == ta) {
+			return NULL;
+		}
+	}
+	//curr = go_to(*h,curr->number);
+	//prev = go_to(*h,prev->number);
+	prev->next = curr->next;
+	return curr;
+}
+Node *go_to(Node *h, int loc) {
+	for (; h; h = h->next) { 
+		if (h->number == loc) {
+			return h;
+		}
+	} return NULL;
+}
 
 
 char** tokenify(const char *s, const char *delim) { // why const ???
@@ -102,7 +109,7 @@ char** tokenify(const char *s, const char *delim) { // why const ???
     
     while (str[h++]) {
     	if (strchr(delim, str[h]) != NULL) { 
-    	arrlen++; 
+    		arrlen++; 
     	}
     } 
     
@@ -140,25 +147,52 @@ void print_tokens(char *tokens[]) {
     }
 }
 
-void free_tokens(char **tokens) {
+void free_little_tokens(char **tokens) {
     int i = 0;
     while (tokens[i] != NULL) {
         // free properly...
+        free(tokens[i++]);
     }
-    free(tokens); // then free the array
+    //free(tokens); // then free the array
 }
+void free_big_tokens(char ***tokens) {
+	int i = 0;
+	int size = count_big_tokens(tokens);
+	while (i != size) {
+		free_little_tokens(tokens[i]);
+		free(tokens[i++]);
+	} //free(tokens);
+}
+void free_list(Node *head) {
+	while (head) {
+		Node *t = head->next;
+		free(head);
+		head = t;
+	}
+}
+		
 
-bool isBuiltin(char** c, bool* res, Node *hh) { // res should be an array of bool
+bool isBuiltin(char** c, bool* res, Node *hh, Node *ph) { // res should be an array of bool
 	if (strcmp(c[0],"exit") == 0) {
-		res[1] = false; // have to check if all other proc are done
-		return true; // at the end
+		if (!res[0] && ph != NULL) {
+			return true;
+		} res[1] = false;
+		return true; 
 	} else if (strcmp(c[0],"history") == 0) {
-		print_list(hh);
+		print_list(hh,false);
+		return true;
+	} else if (strcmp(c[0],"jobs") == 0) {
+		print_list(ph, true);
+		return true;
+	} else if (strcmp(c[0],"pause") == 0) {
+		kill((int)c[1],SIGSTOP);
+		printf("Process %d paused.", (int)c[1]);
+		return true;
+	} else if (strcmp(c[0],"resume") == 0) {
+		kill((int)c[1],SIGCONT);
+		printf("Process %d resumed.", (int)c[1]);
 		return true;
 	} else if (strcmp(c[0],"mode") == 0) {
-		// check size
-		// if more than 1, switch to given arg
-		// else print curr mode
 		int len = count_little_tokens(c);
 		if (len != 1) {
 			if (strcmp(c[1],"sequential") == 0 || strcmp(c[1],"s") == 0) {
@@ -210,15 +244,13 @@ void print_prompt() {
 	getcwd(buf, 128);
 	//printf("%s:~$ ", buf);
 	printf("Testing---> ");
-	fflush(stdin);
-	fflush(stdout);	
 }
 
-void little_to_command(char **l, char *comm) {
+void little_to_command(char **l, char **comm) {
 	int count = 0;
 	while (count != count_little_tokens(l)) {
-		strcat(comm,l[count++]);
-		strcat(comm," ");
+		strcat(*comm,l[count++]);
+		strcat(*comm," ");
 	} 
 }
 
@@ -295,11 +327,11 @@ void chop(char *s, char m) {
 }
 		
 void get_input(char *s) {
+	print_prompt();
 	while (fgets(s, 128, stdin) == NULL) {
 		printf("\n");
 		print_prompt();
 	}
-	fflush(stdin); 
 	fflush(stdout);
 }
 		
@@ -328,7 +360,7 @@ int main(int argc, char **argv) {
 	load_paths(&Phead,&Ptail);
 	
 	while (built_states[1]) { // infinite loop, maybe fork later
-		print_prompt();
+		//print_prompt();
 		if (built_states[3]) {// indexing
 			
 			built_states[3] = false;
@@ -339,37 +371,20 @@ int main(int argc, char **argv) {
 			} else { // poll (para input)
 				// poll
 				struct pollfd pfd[1];
-				pfd[0].fd = 0; // stdin is file descriptor 0
+				pfd[0].fd = 0; 
 				pfd[0].events = POLLIN;
 				pfd[0].revents = 0;
-			 
-				// wait for input on stdin, up to 1000 milliseconds
-				int rv = poll(&pfd[0], 1, 1000);
-			 
-				// the return value tells us whether there was a 
-				// timeout (0), something happened (>0) or an
-				// error (<0).
-
-				if (rv == 0) {
-					//printf("timeout\n");
-					//continue; 
-					//strcpy(cmdLn,"\n");
-					while ((chdPID = waitpid(-1,&status,WNOHANG|WUNTRACED)) > 0) {
-						if (WIFSTOPPED(status)) {
-							Node *job = remove(&phead,chdPID);
-							printf("Process %d (%s) has completed.\n", chdPID, job->string);
-							free(job);
-						}
-					}    
-				} else if (rv > 0) {
-					//get_input(cmdLn);
-					printf("you typed something on stdin\n");
-					while ((chdPID = waitpid(-1,NULL,WNOHANG)) > 0) {
-						printf("Process %d () has completed.\n", chdPID);
+				poll(&pfd[0], 1, 200);
+				while ((chdPID = waitpid(-1,&status,WNOHANG)) > 0) {
+					//printf("Here.");
+					//print_list(phead);
+					Node *job = remove_(&phead,&ptail,phead,ptail,chdPID);
+					if (job != NULL) {
+						printf("Process %d (%s) has completed.\n", chdPID, job->string);
+						free(job);
+						//print_list(phead);	
 					}
-				} else {
-					printf("there was some kind of error");
-				}
+				} get_input(cmdLn);   
 			}
 		}
 		// possible location for history condensing
@@ -390,7 +405,7 @@ int main(int argc, char **argv) {
 		if (built_states[0]) {
 			// sequential
 			for (int i = 0; i != count_big_tokens(cmdholder); i++) {
-				if (!isBuiltin(cmdholder[i], built_states,hhead))  {
+				if (!isBuiltin(cmdholder[i], built_states,hhead,phead))  {
 					chdPID = fork();
 					if (chdPID == 0) {
 						execute(cmdholder[i]);
@@ -400,25 +415,34 @@ int main(int argc, char **argv) {
 						wait(&chdPID);
 					}
 				}
-			}				
+			}
+			free_big_tokens(cmdholder);				
 		} else {
 			// parallel
 			for (int i = 0; i != count_big_tokens(cmdholder); i++) {
-				if (!isBuiltin(cmdholder[i], built_states,hhead))  {
+				if (!isBuiltin(cmdholder[i], built_states,hhead,phead))  {
 					chdPID = fork();
 					if (chdPID == 0) {
 						execute(cmdholder[i]);
 					} else if (chdPID == -1) { // error handling
 						printf("\nA crash occurred...\n");			
 					} else {
-						char comm[128];
-						little_to_command(cmdholder[i],comm);
-						printf("%s\n", comm);
+						int j = 0;
+						char comm[128] = "";
+						while (j != count_little_tokens(cmdholder[i])) {
+							strcat(comm,cmdholder[i][j++]);
+							strcat(comm," ");
+						}
+						//printf("%d %s\n", i, comm);
 						add(&phead,&ptail,comm,chdPID);
 						proc_count++;
 					}
 				}
 			}
+			free_big_tokens(cmdholder);
 		}
-	} return true;
+		free_list(hhead);
+		free_list(Phead);
+		free_list(phead);
+	} return 0;
 }
